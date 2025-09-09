@@ -1,0 +1,12 @@
+flask
+flask-cors
+Pillow
+torch
+torchvision
+open-clip-torch
+opencv-python
+requests
+pymongo
+dnspython
+
+

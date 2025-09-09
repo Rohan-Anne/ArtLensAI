@@ -1,0 +1,16 @@
+[
+    {
+      "id": "great_wave_hokusai",
+      "title": "The Great Wave off Kanagawa",
+      "artist": "Katsushika Hokusai",
+      "year": "c. 1830–1832",
+      "image_url": "https://images.metmuseum.org/CRDImages/as/original/DP130155.jpg"
+    },
+    {
+      "id": "harvesters_bruegel",
+      "title": "The Harvesters",
+      "artist": "Pieter Bruegel the Elder",
+      "year": "1565",
+      "image_url": "https://images.metmuseum.org/CRDImages/ep/original/DT1567.jpg"
+    }
+  ]

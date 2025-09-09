@@ -1,0 +1,52 @@
+version: "3.9"
+services:
+  ollama:
+    image: ollama/ollama:latest
+    ports:
+      - "11434:11434"
+    volumes:
+      - ollama:/root/.ollama
+    # optional, keeps model in RAM a bit longer so repeated calls are snappy
+    environment:
+      - OLLAMA_KEEP_ALIVE=30m
+
+
+  backend:
+    build:
+      context: .
+      dockerfile: backend/Dockerfile
+    env_file:
+      - ./.env
+    environment:
+      - LLM_DEBUG=1
+      - LOG_LEVEL=INFO
+      - TOGETHER_API_KEY=${TOGETHER_API_KEY}
+      - TOGETHER_BASE=${TOGETHER_BASE}
+      - TOGETHER_MODEL=${TOGETHER_MODEL}
+      - USE_TOGETHER=${USE_TOGETHER}
+      - STREAM_SUMMARIES=${STREAM_SUMMARIES}
+      - MONGODB_URI=mongodb+srv://ra733:Akashrohan20$@artlensai.9gchmiw.mongodb.net/          # Atlas SRV or local: mongodb://mongo:27017
+      - MONGODB_DB=artspot
+      - MONGODB_COLL=artwork_vectors
+      - USE_ATLAS_VECTOR=true                # set to false to force brute-force
+      - PYTHONPATH=/app
+    ports:
+      - "5000:5000"
+    volumes:
+      - ./backend:/app/backend
+    depends_on:
+      - ollama
+
+  frontend:
+    image: node:20
+    working_dir: /app
+    volumes:
+      - ./frontend:/app
+    command: sh -c "npm i && npm run dev -- --host"
+    ports:
+      - "5173:5173"
+    depends_on:
+      - backend
+
+volumes:
+  ollama:

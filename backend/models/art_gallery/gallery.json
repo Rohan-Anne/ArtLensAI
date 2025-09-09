@@ -1,0 +1,84 @@
+
+    
+[
+    {
+      "id": "great_wave_hokusai",
+      "file": "great_wave_hokusai.jpg",
+      "title": "The Great Wave off Kanagawa",
+      "artist": "Katsushika Hokusai",
+      "year": "c. 1830–1832"
+    },
+
+    {
+        "id": "starry_night", 
+        "file": "starry_night.jpg", 
+        "title": "The Starry Night", 
+        "artist": "Vincent van Gogh", 
+        "year": "1889"
+    },
+
+    {
+      "id": "washington_crossing_delaware_leutze",
+      "file": "washington_crossing_delaware_leutze.jpg",
+      "title": "Washington Crossing the Delaware",
+      "artist": "Emanuel Leutze",
+      "year": "1851"
+    },
+    {
+      "id": "harvesters_bruegel",
+      "file": "harvesters_bruegel.jpg",
+      "title": "The Harvesters",
+      "artist": "Pieter Bruegel the Elder",
+      "year": "1565"
+    },
+    {
+      "id": "death_of_socrates_david",
+      "file": "death_of_socrates_david.jpg",
+      "title": "The Death of Socrates",
+      "artist": "Jacques-Louis David",
+      "year": "1787"
+    },
+    {
+      "id": "oxbow_thomas_cole",
+      "file": "oxbow_thomas_cole.jpg",
+      "title": "The Oxbow",
+      "artist": "Thomas Cole",
+      "year": "1836"
+    },
+    {
+      "id": "bridge_over_pond_monet",
+      "file": "bridge_over_pond_monet.jpg",
+      "title": "Bridge over a Pond of Water Lilies",
+      "artist": "Claude Monet",
+      "year": "1899"
+    },
+    {
+      "id": "madame_x_sargent",
+      "file": "madame_x_sargent.jpg",
+      "title": "Madame X (Madame Pierre Gautreau)",
+      "artist": "John Singer Sargent",
+      "year": "1883–1884"
+    },
+    {
+      "id": "still_life_apples_primroses_cezanne",
+      "file": "still_life_apples_primroses_cezanne.jpg",
+      "title": "Still Life with Apples and a Pot of Primroses",
+      "artist": "Paul Cézanne",
+      "year": "c. 1890"
+    },
+    {
+      "id": "aristotle_with_bust_rembrandt",
+      "file": "aristotle_with_bust_rembrandt.jpg",
+      "title": "Aristotle with a Bust of Homer",
+      "artist": "Rembrandt",
+      "year": "1653"
+    },
+    {
+      "id": "horse_fair_bonheur",
+      "file": "horse_fair_bonheur.jpg",
+      "title": "The Horse Fair",
+      "artist": "Rosa Bonheur",
+      "year": "1852–1855"
+    }
+  ]
+  

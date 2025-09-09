@@ -1,2 +1,1 @@
-# ArtLensAI
-
+# Art History Vision App
