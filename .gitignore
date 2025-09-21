@@ -1,0 +1,24 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.eggs/
+build/
+dist/
+
+# Virtual envs
+venv/
+.venv/
+backend/venv/
+
+# Large ML artifacts (adjust as needed)
+*.pt
+*.pth
+*.onnx
+*.ckpt
+*.h5
+*.dylib
+*.so
+*.zip
+*.tar
+*.tar.gz

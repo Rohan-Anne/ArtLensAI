@@ -1,14 +1,68 @@
-import { useRef, useState, useEffect, useMemo } from "react";
+import { useRef, useState, useEffect, useMemo, useCallback } from "react";
 import Webcam from "react-webcam";
 import "./App.css";
 
 const API_BASE = "http://localhost:5000";
 
+/* ---------------- Auth helper (JWT access + auto-refresh) ---------------- */
+const AUTH_BASE = `${API_BASE}/api/auth`;
+
+let accessToken = null;
+const setAccessToken = (t) => { accessToken = t; };
+
+async function apiFetch(url, opts = {}) {
+  const headers = new Headers(opts.headers || {});
+  if (accessToken) headers.set("Authorization", `Bearer ${accessToken}`);
+  const res = await fetch(url, { ...opts, headers, credentials: "include" });
+
+  if (res.status !== 401) return res;
+
+  // Try one silent refresh
+  const rr = await fetch(`${AUTH_BASE}/refresh`, { method: "POST", credentials: "include" });
+  if (rr.ok) {
+    const data = await rr.json();
+    if (data?.access_token) setAccessToken(data.access_token);
+    const headers2 = new Headers(opts.headers || {});
+    if (data?.access_token) headers2.set("Authorization", `Bearer ${data.access_token}`);
+    return fetch(url, { ...opts, headers: headers2, credentials: "include" });
+  }
+
+  throw new Error("Unauthorized");
+}
+
+async function register(email, password) {
+  const r = await fetch(`${AUTH_BASE}/register`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    credentials: "include",
+    body: JSON.stringify({ email, password }),
+  });
+  if (!r.ok) throw new Error((await r.json()).error || "Register failed");
+  return true;
+}
+
+async function login(email, password) {
+  const r = await fetch(`${AUTH_BASE}/login`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    credentials: "include",
+    body: JSON.stringify({ email, password }),
+  });
+  if (!r.ok) throw new Error((await r.json()).error || "Login failed");
+  const data = await r.json();
+  setAccessToken(data.access_token);
+  return data.user;
+}
+
+async function logout() {
+  await fetch(`${AUTH_BASE}/logout`, { method: "POST", credentials: "include" });
+  setAccessToken(null);
+}
+
+/* ---------------- Utilities ---------------- */
 const resolveThumb = (u) => {
   if (!u) return "";
-  return /^https?:\/\//i.test(u)
-    ? u
-    : `${API_BASE}${u.startsWith("/") ? u : `/${u}`}`;
+  return /^https?:\/\//i.test(u) ? u : `${API_BASE}${u.startsWith("/") ? u : `/${u}`}`;
 };
 
 // key MUST match backend: artwork_id | id | "title|artist"
@@ -17,10 +71,120 @@ const keyOf = (a) =>
   (a?.id && String(a.id)) ||
   `${(a?.title || "").trim()}|${(a?.artist || "").trim()}`;
 
+/* ---------- Auth UI ---------- */
+function AuthBar({ user, setUser }) {
+  const [email, setEmail] = useState("");
+  const [pw, setPw] = useState("");
+  const [mode, setMode] = useState("login");
+  const [busy, setBusy] = useState(false);
+  const [msg, setMsg] = useState("");
+
+  const doAuth = async (e) => {
+    e.preventDefault();
+    setBusy(true); setMsg("");
+    try {
+      if (mode === "register") {
+        await register(email, pw);
+        setMsg("Registered! Now login.");
+        setMode("login");
+      } else {
+        const u = await login(email, pw);
+        setUser(u);
+        setMsg("");
+      }
+    } catch (err) {
+      setMsg(`⚠️ ${err.message}`);
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  if (user) {
+    return (
+      <div className="row" style={{ gap: 8 }}>
+        <div className="muted">Signed in as <b>{user.email}</b></div>
+        <button className="btn btn-ghost" onClick={async () => { await logout(); setUser(null); }}>
+          Logout
+        </button>
+      </div>
+    );
+  }
+
+  return (
+    <form className="row" onSubmit={doAuth} style={{ gap: 8 }}>
+      <input className="input" placeholder="email" value={email} onChange={(e)=>setEmail(e.target.value)} />
+      <input className="input" type="password" placeholder="password" value={pw} onChange={(e)=>setPw(e.target.value)} />
+      <button className="btn btn-primary" disabled={busy}>
+        {mode === "login" ? "Login" : "Register"}
+      </button>
+      <button type="button" className="btn btn-ghost" onClick={()=>setMode(mode==="login"?"register":"login")}>
+        {mode==="login"?"Need an account?":"Have an account?"}
+      </button>
+      {msg && <span className="muted">{msg}</span>}
+    </form>
+  );
+}
+
+/* ---------- NEW: Chat panel component ---------- */
+function ChatPanel({ artwork, thread, onSend, streaming }) {
+  const [input, setInput] = useState("");
+  const endRef = useRef(null);
+
+  const submit = (e) => {
+    e.preventDefault();
+    const text = input.trim();
+    if (!text || streaming) return;
+    onSend(text);
+    setInput("");
+  };
+
+  useEffect(() => {
+    endRef.current?.scrollIntoView({ behavior: "smooth" });
+  }, [thread, streaming]);
+
+  return (
+    <div className="chat-card">
+      <div className="chat-header">
+        <div className="item-title">Ask more about: {artwork?.title || "Artwork"}</div>
+        <div className="muted">Follow-up Q&A (teacher mode)</div>
+      </div>
+
+      <div className="chat-log">
+        {(thread?.messages || []).map((m, i) => (
+          <div key={i} className={`chat-msg ${m.role === "user" ? "right" : "left"}`}>
+            <div className="bubble">{m.content}</div>
+          </div>
+        ))}
+        {streaming && (
+          <div className="chat-msg left">
+            <div className="bubble bubble-stream">...</div>
+          </div>
+        )}
+        <div ref={endRef} />
+      </div>
+
+      <form className="chat-input-row" onSubmit={submit}>
+        <input
+          className="chat-input"
+          placeholder="Ask a question about this piece…"
+          value={input}
+          onChange={(e) => setInput(e.target.value)}
+          disabled={streaming}
+        />
+        <button className="btn btn-primary" disabled={streaming || !input.trim()}>
+          {streaming ? "Thinking…" : "Send"}
+        </button>
+      </form>
+    </div>
+  );
+}
+
 export default function App() {
   const webcamRef = useRef(null);
   const boxRef = useRef(null);
   const fileInputRef = useRef(null);
+
+  const [user, setUser] = useState(null);
 
   const [candidates, setCandidates] = useState([]);
   const [bbox, setBbox] = useState(null);
@@ -29,8 +193,11 @@ export default function App() {
   // summary-related state
   const [summary, setSummary] = useState("");   // streamed text shown in the panel
   const [selected, setSelected] = useState(null);
-  const [sumMap, setSumMap] = useState({});     // {key: fullSummaryText}
   const [sumLoading, setSumLoading] = useState({}); // {key: boolean}
+
+  // ---------- NEW: per-artwork chat state ----------
+  // chatMap: { [key]: { messages: [{role, content}], streaming: boolean } }
+  const [chatMap, setChatMap] = useState({});
 
   const [error, setError] = useState("");
 
@@ -56,21 +223,15 @@ export default function App() {
     const k = keyOf(art);
     if (!k) return;
 
-    // if already loaded, just show cached
-    if (sumMap[k]) {
-      setSummary(sumMap[k]);
-      return;
-    }
-
     setSumLoading((s) => ({ ...s, [k]: true }));
     setSummary(""); // clear panel to start streaming
 
     try {
-      const res = await fetch(`${API_BASE}/api/summarize/stream`, {
+      const res = await apiFetch(`${API_BASE}/api/summarize/stream`, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
-          "Accept": "text/event-stream", // important for SSE
+          "Accept": "text/event-stream",
         },
         body: JSON.stringify({
           artwork_id: art.artwork_id || art.id || k,
@@ -78,7 +239,7 @@ export default function App() {
           artist: art.artist,
           year: art.year,
           source: art.source,
-          nocache: true, // force fresh once; remove later to reuse cache
+          nocache: true, // explicitly bypass any caches
         }),
       });
 
@@ -98,11 +259,9 @@ export default function App() {
               full += piece;
               setSummary((s) => s + piece);
             }
-          } catch {
-            // ignore
-          }
+          } catch { /* ignore */ }
         } else if (evt === "done") {
-          setSumMap((m) => ({ ...m, [k]: full }));
+          // nothing
         } else if (evt === "error") {
           try {
             const obj = JSON.parse(dataStr);
@@ -113,7 +272,6 @@ export default function App() {
         }
       };
 
-      // Parse SSE frames: "event: X\ndata: Y\n\n"
       while (true) {
         const { value, done } = await reader.read();
         if (done) break;
@@ -127,9 +285,7 @@ export default function App() {
           let data = "";
           for (const line of frame.split("\n")) {
             if (line.startsWith("event:")) evt = line.slice(6).trim();
-            else if (line.startsWith("data:")) {
-              data += (data ? "\n" : "") + line.slice(5).trim();
-            }
+            else if (line.startsWith("data:")) data += (data ? "\n" : "") + line.slice(5).trim();
           }
           handleEvent(evt, data);
         }
@@ -146,7 +302,7 @@ export default function App() {
     const formData = new FormData();
     formData.append("file", blob, "snapshot.jpg");
 
-    const res = await fetch(`${API_BASE}/api/analyze`, {
+    const res = await apiFetch(`${API_BASE}/api/analyze`, {
       method: "POST",
       body: formData,
     });
@@ -160,7 +316,7 @@ export default function App() {
     if (cands.length === 0) {
       setError("No close matches. Try getting closer, improve lighting, or center the artwork.");
     } else {
-      // summarize on demand via streamSummaryFor (no prefetch to save tokens)
+      // Wait for explicit "Details" click -> streamSummaryFor
     }
   };
 
@@ -171,6 +327,7 @@ export default function App() {
     setError("");
     setSelected(null);
     setSummary("");
+    setChatMap({}); // reset any prior threads on new scan
 
     try {
       const imageSrc = webcamRef.current.getScreenshot({ width: 1280, height: 720 });
@@ -193,6 +350,7 @@ export default function App() {
     setLoading(true);
     setSelected(null);
     setSummary("");
+    setChatMap({});
     setError("");
     try {
       await analyzeBlob(file);
@@ -211,7 +369,7 @@ export default function App() {
   const toggleTorch = async () => {
     try {
       const stream = webcamRef.current?.stream;
-      const track = stream?.getVideoTracks?.()[0];
+      const track = stream?.getVideoTracks?.[0];
       if (!track) throw new Error("No camera track");
       const capabilities = track.getCapabilities?.() || {};
       if (!("torch" in capabilities)) throw new Error("Torch not supported");
@@ -227,24 +385,135 @@ export default function App() {
   const getSummary = (art) => {
     setSelected(art);
     setSummary(""); // show streaming immediately
+    // initialize empty chat if not existing
+    const k = keyOf(art);
+    setChatMap((m) => (m[k] ? m : { ...m, [k]: { messages: [], streaming: false }}));
     streamSummaryFor(art);
   };
+
+  // ---------- NEW: stream an assistant reply for the current artwork ----------
+  const askStream = useCallback(async (questionText) => {
+    if (!selected) return;
+    const k = keyOf(selected);
+    const thread = chatMap[k] || { messages: [], streaming: false };
+
+    // optimistic update: add user msg + placeholder assistant msg
+    const newUserMsg = { role: "user", content: questionText };
+    setChatMap((m) => ({
+      ...m,
+      [k]: { messages: [...(thread.messages || []), newUserMsg], streaming: true }
+    }));
+
+    try {
+      const res = await apiFetch(`${API_BASE}/api/ask/stream`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "Accept": "text/event-stream",
+        },
+        body: JSON.stringify({
+          artwork: {
+            artwork_id: selected.artwork_id || selected.id || k,
+            title: selected.title,
+            artist: selected.artist,
+            year: selected.year,
+            source: selected.source,
+          },
+          messages: (thread.messages || []).concat([newUserMsg]),
+          context: summary || "", // ground chat on the currently streamed FFCC
+        }),
+      });
+
+      if (!res.ok || !res.body) throw new Error("chat stream failed");
+
+      const reader = res.body.getReader();
+      const decoder = new TextDecoder();
+      let buffer = "";
+
+      const pushAssistant = (chunk) => {
+        setChatMap((m) => {
+          const cur = m[k] || { messages: [], streaming: true };
+          const msgs = cur.messages.slice();
+          if (msgs.length && msgs[msgs.length - 1].role === "assistant") {
+            msgs[msgs.length - 1] = { role: "assistant", content: (msgs[msgs.length - 1].content || "") + chunk };
+          } else {
+            msgs.push({ role: "assistant", content: chunk });
+          }
+          return { ...m, [k]: { messages: msgs, streaming: true } };
+        });
+      };
+
+      const handleEvent = (evt, dataStr) => {
+        if (evt === "token") {
+          try {
+            const obj = JSON.parse(dataStr);
+            const piece = obj?.text || "";
+            if (piece) pushAssistant(piece);
+          } catch { /* ignore */ }
+        } else if (evt === "done") {
+          setChatMap((m) => {
+            const cur = m[k] || { messages: [], streaming: false };
+            return { ...m, [k]: { ...cur, streaming: false } };
+          });
+        } else if (evt === "error") {
+          setChatMap((m) => {
+            const cur = m[k] || { messages: [], streaming: false };
+            const msgs = cur.messages.concat([{ role: "assistant", content: "⚠️ Error answering your question." }]);
+            return { ...m, [k]: { messages: msgs, streaming: false } };
+          });
+        }
+      };
+
+      while (true) {
+        const { value, done } = await reader.read();
+        if (done) break;
+        buffer += decoder.decode(value, { stream: true });
+
+        let idx;
+        while ((idx = buffer.indexOf("\n\n")) !== -1) {
+          const frame = buffer.slice(0, idx);
+          buffer = buffer.slice(idx + 2);
+          let evt = "message";
+          let data = "";
+          for (const line of frame.split("\n")) {
+            if (line.startsWith("event:")) evt = line.slice(6).trim();
+            else if (line.startsWith("data:")) data += (data ? "\n" : "") + line.slice(5).trim();
+          }
+          handleEvent(evt, data);
+        }
+      }
+    } catch (e) {
+      setChatMap((m) => {
+        const cur = m[k] || { messages: [], streaming: false };
+        const msgs = cur.messages.concat([{ role: "assistant", content: `⚠️ ${e.message || "Stream error"}` }]);
+        return { ...m, [k]: { messages: msgs, streaming: false } };
+      });
+    }
+  }, [selected, chatMap, summary]);
+
+  const threadForSelected = (() => {
+    if (!selected) return null;
+    return chatMap[keyOf(selected)] || { messages: [], streaming: false };
+  })();
 
   return (
     <div className="container">
       {/* Header */}
       <header className="header">
         <div>
-          <div className="title">ArtSpot 🎬</div>
+          <div className="title">ArtLens AI 🎬</div>
           <div className="subtitle">Cinema-dark, responsive, and robust.</div>
         </div>
-        <div className="row">
-          <button className="btn btn-ghost" onClick={flipCamera} title="Flip camera">
-            🔄 Flip
-          </button>
-          <button className="btn btn-ghost" onClick={() => window.location.reload()}>
-            Reset
-          </button>
+        <div className="col" style={{ gap: 8 }}>
+          <AuthBar user={user} setUser={setUser} />
+          <div className="row">
+            <button className="btn btn-ghost" onClick={flipCamera} title="Flip camera">
+              🔄 Flip
+            </button>
+            <button className="btn btn-ghost" onClick={() => window.location.reload()}>
+              Reset
+            </button>
+          </div>
         </div>
       </header>
 
@@ -317,7 +586,7 @@ export default function App() {
                 <div className="results">
                   {candidates.map((c, i) => {
                     const k = keyOf(c);
-                    const isLoading = !!sumLoading[k] && !sumMap[k];
+                    const isLoading = !!sumLoading[k];
                     return (
                       <div key={i} className="result-item">
                         <img
@@ -355,7 +624,19 @@ export default function App() {
                     <div className="item-title">About: {selected.title}</div>
                     <button className="btn btn-ghost" onClick={() => setSelected(null)}>Close</button>
                   </div>
+
+                  {/* Summary panel */}
                   <div className="summary">{summary || "..."}</div>
+
+                  {/* ---------- NEW: Chat panel appears after summary ---------- */}
+                  <div style={{ marginTop: 12 }}>
+                    <ChatPanel
+                      artwork={selected}
+                      thread={threadForSelected}
+                      streaming={threadForSelected?.streaming}
+                      onSend={askStream}
+                    />
+                  </div>
                 </div>
               )}
             </>
@@ -390,3 +671,4 @@ export default function App() {
     </div>
   );
 }
+

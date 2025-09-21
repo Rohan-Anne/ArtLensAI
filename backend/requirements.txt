@@ -8,5 +8,7 @@ opencv-python
 requests
 pymongo
 dnspython
+flask-jwt-extended
+argon2-cffi
 
 
